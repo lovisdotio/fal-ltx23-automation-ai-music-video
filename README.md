@@ -110,10 +110,6 @@ Edit `pipeline.py` to customize:
 | Character & Frames | [`fal-ai/nano-banana-pro`](https://fal.ai/models/fal-ai/nano-banana-pro) | Text/image-to-image generation |
 | Video | [`fal-ai/ltx-2/v2.3/audio-to-video`](https://fal.ai/models/fal-ai/ltx-2/v2.3/audio-to-video) | Audio-reactive video generation |
 
-## Music
-
-See [`suno_instructions.md`](suno_instructions.md) for the Suno AI prompt used to generate the reggaeton track.
-
 ## License
 
 MIT
