@@ -4,8 +4,6 @@ Fully automated pipeline to create AI-generated music videos using **fal.ai** mo
 
 **Pipeline:** Suno AI (music) → fal.ai nano-banana-pro (scene frames) → fal.ai LTX 2.3 (audio-to-video) → ffmpeg (effects + assembly)
 
-https://github.com/user-attachments/assets/placeholder
-
 ## How it works
 
 1. **Music** — Generate a track on [Suno AI](https://suno.com) (or use any audio file)
