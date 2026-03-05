@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Video Selector</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #1a1a2e; color: #eee; font-family: 'Segoe UI', sans-serif; padding: 20px; max-width: 1200px; margin: 0 auto; }
+  h1 { text-align: center; color: #ff6b6b; margin-bottom: 5px; }
+  .progress-bar { background: #16213e; border-radius: 20px; height: 12px; margin: 15px 0; overflow: hidden; }
+  .progress-fill { background: linear-gradient(90deg, #ff6b6b, #4ecdc4); height: 100%; border-radius: 20px; transition: width .3s; }
+  .progress-text { text-align: center; color: #888; margin-bottom: 20px; font-size: 14px; }
+
+  .seg-info {
+    background: #16213e; border-radius: 12px; padding: 15px 20px; margin-bottom: 15px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .seg-title { font-size: 20px; font-weight: bold; color: #ff6b6b; }
+  .seg-time { color: #888; }
+  .seg-scene { color: #aaa; font-style: italic; font-size: 13px; margin-top: 5px; }
+
+  .videos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 15px; }
+  .vid-option {
+    border-radius: 12px; overflow: hidden; cursor: pointer;
+    border: 3px solid #2a2a4a; transition: all .2s; background: #0f0f23;
+  }
+  .vid-option:hover { border-color: #ff6b6b; transform: scale(1.01); }
+  .vid-option.selected { border-color: #4ecdc4; box-shadow: 0 0 20px rgba(78,205,196,.3); }
+  .vid-option video { width: 100%; display: block; }
+  .vid-label { text-align: center; padding: 8px; font-size: 13px; color: #aaa; }
+  .vid-option.selected .vid-label { color: #4ecdc4; font-weight: bold; }
+
+  .nav { display: flex; gap: 10px; justify-content: center; margin-top: 15px; }
+  .nav button {
+    padding: 12px 30px; border: none; border-radius: 8px; font-size: 15px;
+    font-weight: bold; cursor: pointer; transition: all .2s;
+  }
+  .nav .prev { background: #2a2a4a; color: #aaa; }
+  .nav .prev:hover { background: #3a3a5a; }
+  .nav .next { background: #ff6b6b; color: #fff; }
+  .nav .next:hover { background: #ee5a5a; }
+  .nav .next:disabled { background: #444; color: #666; cursor: not-allowed; }
+  .nav .skip { background: #2a2a4a; color: #888; }
+  .done-screen { text-align: center; padding: 60px 20px; }
+  .done-screen h2 { color: #4ecdc4; font-size: 32px; margin-bottom: 15px; }
+  .done-screen button { background: #4ecdc4; color: #000; border: none; padding: 15px 40px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 20px; }
+</style>
+</head>
+<body>
+
+<h1>Video Selector</h1>
+<div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+<p class="progress-text" id="progressText">Loading...</p>
+
+<div id="main"></div>
+
+<script>
+let segments = [];
+let videosBySegment = {};
+let currentIdx = 0;
+let selections = {};
+
+async function init() {
+  const segRes = await fetch('output/scenes/segments.json');
+  segments = await segRes.json();
+
+  const vidRes = await fetch('output/videos/video_results.json');
+  const videos = await vidRes.json();
+
+  videosBySegment = {};
+  videos.forEach(v => {
+    if (!videosBySegment[v.seg_idx]) videosBySegment[v.seg_idx] = [];
+    videosBySegment[v.seg_idx].push(v);
+  });
+  Object.values(videosBySegment).forEach(arr => arr.sort((a, b) => a.var - b.var));
+  segments = segments.filter(s => videosBySegment[s.index] && videosBySegment[s.index].length > 0);
+  render();
+}
+
+function render() {
+  updateProgress();
+  if (currentIdx >= segments.length) { showDone(); return; }
+
+  const seg = segments[currentIdx];
+  const variants = videosBySegment[seg.index] || [];
+  const selected = selections[seg.index];
+
+  document.getElementById('main').innerHTML = `
+    <div class="seg-info">
+      <div>
+        <div class="seg-title">Segment ${currentIdx + 1} / ${segments.length}</div>
+        <div class="seg-scene">${seg.scene}</div>
+      </div>
+      <div class="seg-time">${seg.start}s - ${seg.end}s (${seg.duration}s)</div>
+    </div>
+    <div class="videos">
+      ${variants.map((v, i) => `
+        <div class="vid-option ${selected == v.var ? 'selected' : ''}" data-var="${v.var}" data-path="${v.path}">
+          <video src="${v.path}" controls loop preload="auto"></video>
+          <div class="vid-label">Option ${i + 1}</div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="nav">
+      <button class="prev" onclick="goPrev()" ${currentIdx === 0 ? 'disabled' : ''}>Previous</button>
+      <button class="skip" onclick="goNext()">Skip</button>
+      <button class="next" id="nextBtn" onclick="goNext()" ${!selected && selected !== 0 ? 'disabled' : ''}>
+        ${currentIdx === segments.length - 1 ? 'Finish' : 'Next'}
+      </button>
+    </div>
+  `;
+
+  document.querySelectorAll('.vid-option').forEach(el => {
+    el.addEventListener('click', () => {
+      document.querySelectorAll('.vid-option video').forEach(v => v.pause());
+      document.querySelectorAll('.vid-option').forEach(e => e.classList.remove('selected'));
+      el.classList.add('selected');
+      selections[seg.index] = parseInt(el.dataset.var);
+      el.querySelector('video').currentTime = 0;
+      el.querySelector('video').play();
+      document.getElementById('nextBtn').disabled = false;
+      updateProgress();
+    });
+  });
+}
+
+function updateProgress() {
+  const done = Object.keys(selections).length, total = segments.length;
+  document.getElementById('progressFill').style.width = Math.round(done/total*100) + '%';
+  document.getElementById('progressText').textContent = `${done} / ${total} selected (${Math.round(done/total*100)}%)`;
+}
+
+function cleanup() {
+  document.querySelectorAll('.vid-option video').forEach(v => { v.pause(); v.removeAttribute('src'); v.load(); });
+}
+
+function goNext() { cleanup(); currentIdx++; render(); window.scrollTo(0,0); }
+function goPrev() { cleanup(); currentIdx--; render(); window.scrollTo(0,0); }
+
+function showDone() {
+  document.getElementById('main').innerHTML = `
+    <div class="done-screen">
+      <h2>All done!</h2>
+      <p>${Object.keys(selections).length} / ${segments.length} segments selected</p>
+      <button onclick="exportSelections()">Export Selections</button>
+    </div>
+  `;
+}
+
+function exportSelections() {
+  const result = {};
+  for (const [segIdx, varIdx] of Object.entries(selections)) {
+    const chosen = videosBySegment[parseInt(segIdx)].find(v => v.var === varIdx);
+    result[segIdx] = { var: varIdx, path: chosen ? chosen.path : '' };
+  }
+  const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'video_selections.json';
+  a.click();
+  alert('Exported!');
+}
+
+init();
+</script>
+</body>
+</html>

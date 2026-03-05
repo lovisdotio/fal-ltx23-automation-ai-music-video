@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Frame Selector</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #1a1a2e; color: #eee; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+  h1 { text-align: center; color: #ff6b6b; margin-bottom: 10px; font-size: 28px; }
+  .subtitle { text-align: center; color: #888; margin-bottom: 20px; }
+
+  .audio-bar {
+    position: sticky; top: 0; z-index: 100; background: #16213e; padding: 15px 20px;
+    border-radius: 12px; margin-bottom: 20px; display: flex; align-items: center; gap: 15px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.5);
+  }
+  .audio-bar audio { flex: 1; height: 40px; }
+  .audio-bar .status { color: #ff6b6b; font-weight: bold; min-width: 120px; text-align: right; }
+
+  .segment {
+    background: #16213e; border-radius: 12px; padding: 15px; margin-bottom: 15px;
+    border: 2px solid transparent; transition: border-color .3s;
+  }
+  .segment.active { border-color: #ff6b6b; }
+  .segment.selected { border-color: #4ecdc4; }
+  .seg-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .seg-title { font-weight: bold; color: #ff6b6b; font-size: 16px; }
+  .seg-time { color: #888; font-size: 13px; }
+  .seg-scene { color: #aaa; font-size: 12px; margin-bottom: 10px; font-style: italic; }
+
+  .variants { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .variant {
+    position: relative; cursor: pointer; border-radius: 8px; overflow: hidden;
+    border: 3px solid transparent; transition: all .2s;
+  }
+  .variant:hover { border-color: #ff6b6b; transform: scale(1.02); }
+  .variant.chosen { border-color: #4ecdc4; box-shadow: 0 0 15px rgba(78,205,196,.4); }
+  .variant img { width: 100%; display: block; }
+  .variant .label {
+    position: absolute; top: 5px; left: 5px; background: rgba(0,0,0,.7);
+    padding: 2px 8px; border-radius: 4px; font-size: 11px;
+  }
+  .variant .check {
+    position: absolute; top: 5px; right: 5px; background: #4ecdc4;
+    width: 24px; height: 24px; border-radius: 50%; display: none;
+    align-items: center; justify-content: center; font-size: 14px; color: #000;
+  }
+  .variant.chosen .check { display: flex; }
+
+  .toolbar {
+    position: fixed; bottom: 20px; right: 20px; z-index: 200;
+    display: flex; gap: 10px;
+  }
+  .toolbar button {
+    background: #ff6b6b; color: #fff; border: none; padding: 12px 24px;
+    border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer;
+    box-shadow: 0 4px 15px rgba(255,107,107,.4);
+  }
+  .toolbar button:hover { background: #ee5a5a; }
+  .toolbar .count { background: #4ecdc4; color: #000; }
+  .loading { text-align: center; padding: 60px; color: #888; font-size: 18px; }
+</style>
+</head>
+<body>
+
+<h1>Frame Selector</h1>
+<p class="subtitle">Click to select the best frame per segment. Audio syncs as you scroll.</p>
+
+<div class="audio-bar">
+  <audio id="audio" controls src="audio.mp3"></audio>
+  <div class="status" id="audioStatus">0:00</div>
+</div>
+
+<div id="segments" class="loading">Loading segments...</div>
+
+<div class="toolbar">
+  <button class="count" id="countBtn">0 / 0 selected</button>
+  <button id="exportBtn">Export Selections</button>
+</div>
+
+<script>
+const audio = document.getElementById('audio');
+const container = document.getElementById('segments');
+const countBtn = document.getElementById('countBtn');
+const audioStatus = document.getElementById('audioStatus');
+const selections = {};
+let segmentsData = [];
+
+async function init() {
+  const segRes = await fetch('output/scenes/segments.json');
+  segmentsData = await segRes.json();
+
+  const frRes = await fetch('output/scenes/frame_results.json');
+  const frames = await frRes.json();
+
+  const bySegment = {};
+  frames.forEach(f => {
+    if (!bySegment[f.seg_idx]) bySegment[f.seg_idx] = [];
+    bySegment[f.seg_idx].push(f);
+  });
+  Object.values(bySegment).forEach(arr => arr.sort((a, b) => a.var - b.var));
+
+  container.innerHTML = '';
+  container.classList.remove('loading');
+
+  segmentsData.forEach(seg => {
+    const div = document.createElement('div');
+    div.className = 'segment';
+    div.id = `seg-${seg.index}`;
+    div.dataset.start = seg.start;
+    div.dataset.end = seg.end;
+    const variants = bySegment[seg.index] || [];
+    div.innerHTML = `
+      <div class="seg-header">
+        <span class="seg-title">Segment ${seg.index + 1}</span>
+        <span class="seg-time">${seg.start}s - ${seg.end}s (${seg.duration}s)</span>
+      </div>
+      <div class="seg-scene">${seg.scene}</div>
+      <div class="variants">
+        ${variants.map(v => `
+          <div class="variant" data-seg="${seg.index}" data-var="${v.var}" data-path="${v.path}">
+            <img src="${v.path}" loading="lazy" />
+            <span class="label">V${v.var + 1}</span>
+            <span class="check">&#10003;</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    container.appendChild(div);
+  });
+
+  document.querySelectorAll('.variant').forEach(el => {
+    el.addEventListener('click', () => {
+      const segIdx = el.dataset.seg;
+      document.querySelectorAll(`.variant[data-seg="${segIdx}"]`).forEach(s => s.classList.remove('chosen'));
+      el.classList.add('chosen');
+      selections[segIdx] = { var: parseInt(el.dataset.var), path: el.dataset.path };
+      document.getElementById(`seg-${segIdx}`).classList.add('selected');
+      updateCount();
+    });
+  });
+  updateCount();
+}
+
+function updateCount() {
+  countBtn.textContent = `${Object.keys(selections).length} / ${segmentsData.length} selected`;
+}
+
+audio.addEventListener('timeupdate', () => {
+  const t = audio.currentTime;
+  audioStatus.textContent = `${Math.floor(t/60)}:${Math.floor(t%60).toString().padStart(2,'0')}`;
+  document.querySelectorAll('.segment').forEach(el => {
+    const start = parseFloat(el.dataset.start), end = parseFloat(el.dataset.end);
+    el.classList.toggle('active', t >= start && t < end);
+  });
+});
+
+document.getElementById('exportBtn').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(selections, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'frame_selections.json';
+  a.click();
+  alert(`Exported ${Object.keys(selections).length} selections!`);
+});
+
+init();
+</script>
+</body>
+</html>

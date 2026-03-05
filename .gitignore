@@ -1,0 +1,9 @@
+output/
+.venv/
+__pycache__/
+*.pyc
+*.mp4
+*.mp3
+*.webm
+nohup.out
+.DS_Store
